@@ -1,103 +1,81 @@
-# HiNeRV
+# **Streamlined HiNeRV Encoder**
 
-This is the repository of the paper "HiNeRV: Video Compression with Hierarchical Encoding-based Neural Representation"  (NeurIPS 2023).
+This is a user-friendly fork of the official [HiNeRV repository](https://github.com/hmkx/HiNeRV) (NeurIPS 2023).
 
-By Ho Man Kwan, Ge Gao, Fan Zhang, Andrew Gower and David Bull
+This version provides a streamlined setup and usage workflow, including:
 
-[Project page](https://hmkx.github.io/hinerv/)
+* A robust, one-command Conda environment setup.  
+* An automated script (`run_hinerv.sh`) to handle video preprocessing and encoding in a single step.  
+* Automatic video resolution detection.
 
-[arXiv](https://arxiv.org/abs/2306.09818)
+## **1\. Installation**
 
-## Dependencies
-```
-accelerate==0.23.0
-deepspeed==0.11.1
-pytorch-msssim==1.0.0
-timm==0.9.7
-torch==2.1.0
-torchac==0.9.3
-torchvision==0.16.0
-```
+The entire environment setup is handled by a single script.
 
+**Prerequisites:** You must have `conda` installed on your system.
 
-## Examples
-### Prepare the dataset
-This implementation requires first converting the videos into PNGs. For example, you can use [FFMpeg](https://www.ffmpeg.org/):
-```
-mkdir video
-ffmpeg -video_size 1920x1080 -pixel_format yuv420p -i video.yuv video/%4d.png
-```
+First, clone this repository:
 
-The UVG dataset can be downloaded [here](https://ultravideo.fi/dataset.html).
+git clone \<URL\_of\_your\_fork\>  
+cd \<repository\_name\>
 
-### Training
-To train HiNeRV-S with the UVG dataset (ReadySetGo sequence) and the video compression setting:
-```
-dataset_dir=~/Datasets/UVG/1920x1080
-dataset_name=ReadySetGo
-output=~/Models/HiNeRV
-train_cfg=$(cat "cfgs/train/hinerv_1920x1080.txt")
-model_cfg=$(cat "cfgs/models/uvg-hinerv-s_1920x1080.txt")
-accelerate launch --mixed_precision=fp16 --dynamo_backend=inductor hinerv_main.py \
-  --dataset ${dataset_dir} --dataset-name ${dataset_name} --output ${output} \
-  ${train_cfg} ${model_cfg} --batch-size 144 --eval-batch-size 1 --grad-accum 1 --log-eval false --seed 0
-```
+Then, run the installation script. This will create a new Conda environment named `hinerv` and install all necessary dependencies correctly.
 
-The output will be saved into a new folder in the output path, e.g. ~/Models/HiNeRV/HiNeRV-20231030-032238-133f0dfc. This path can be used for resuming training/loading bitstream directly.
+chmod \+x install.sh  
+./install.sh
 
-Please note that the batch size refers to the number of patches. Make sure to adjust it accordingly if you have changed the patch size (see 'cfgs/train/hinerv_1920x1080.txt' for details). While the original configuration uses 120x120 patches, using larger patches (e.g., 'cfgs/train/hinerv_1920x1080_480x360.txt' uses 480x360 patches) reduces overhead but may slightly impact performance.
+The installation is now complete.
 
+## **2\. Usage**
 
-To save the model outputs into images, set --log-eval to true.
+To use the encoder, you first need to activate the Conda environment in your terminal.
 
+conda activate hinerv
 
-### Evaluation
-To evaluate with the compressed bitstream:
-```
-dataset_dir=~/Datasets/UVG/1920x1080
-dataset_name=ReadySetGo
-output=~/Models/HiNeRV
-train_cfg=$(cat "cfgs/train/hinerv_1920x1080.txt")
-model_cfg=$(cat "cfgs/models/uvg-hinerv-s_1920x1080.txt")
-checkpoint_path=~/Models/HiNeRV/HiNeRV-20231030-032238-133f0dfc
-accelerate launch --mixed_precision=fp16 --dynamo_backend=inductor hinerv_main.py \
-  --dataset ${dataset_dir} --dataset-name ${dataset_name} --output ${output} \
-  ${train_cfg} ${model_cfg} --batch-size 144 --eval-batch-size 1 --grad-accum 1 --log-eval false --seed 0 \
-  --bitstream ${checkpoint_path} --bitstream-q 6 --eval-only
-```
+### **Basic Encoding**
 
-checkpoint_path is the path of the trained model directory, and bitstream-q is the quantization level.
+The primary way to use this repository is through the `run_hinerv.sh` script. At its simplest, you just need to provide a path to your video file.
 
+\# Make the script executable (only need to do this once)  
+chmod \+x run\_hinerv.sh
 
-### Other settings
-To train HiNeRV-S with the 37 epochs setting (no pruning/quantization):
-```
-dataset_dir=~/Datasets/UVG/1920x1080
-dataset_name=ReadySetGo
-output=~/Models/HiNeRV
-train_cfg=$(cat "cfgs/train/hinerv_1920x1080_37e_no-compress.txt")
-model_cfg=$(cat "cfgs/models/uvg-hinerv-s_1920x1080.txt")
-accelerate launch --mixed_precision=fp16 --dynamo_backend=inductor hinerv_main.py \
-  --dataset ${dataset_dir} --dataset-name ${dataset_name} --output ${output} \
-  ${train_cfg} ${model_cfg} --batch-size 144 --eval-batch-size 1 --grad-accum 1 --log-eval false --seed 0
-```
+\# Run the encoding process on your video  
+./run\_hinerv.sh \-i /path/to/my\_video.mp4
 
+The script will automatically:
 
-# Results
-This implementation has slightly improved average performance compared to the original one. The results for both the original and this version will be provided in the 'results' folder.
+1. Create an output directory named `hinerv_output/my_video`.  
+2. Convert `my_video.mp4` into a sequence of PNG frames.  
+3. Detect the video's resolution (e.g., 1920x1080).  
+4. Find the corresponding HiNeRV configuration files for that resolution.  
+5. Run the HiNeRV training process to encode the video.  
+6. Save the final trained model (the compressed "bitstream") into the output directory.
 
+### **Advanced Options**
 
-## Acknowledgement
-Part of the implementation is based on the code from [PyTorch Image Models](https://github.com/huggingface/pytorch-image-models) and [HNeRV](https://github.com/haochen-rye/HNeRV).
+The `run_hinerv.sh` script has several options to customize its behavior:
 
+| Flag | Argument | Description | Default |
+| :---- | :---- | :---- | :---- |
+| `-i` | `<path>` | **(Required)** Path to the input. Can be a video file (e.g., `.mp4`) or a directory of pre-existing PNG frames. |  |
+| `-m` | `<S/L>` | The model size to use. `S` for the small model, `L` for the large model. | `S` |
+| `-o` | `<dir_path>` | The base directory where all output folders will be created. | `hinerv_output` |
+| `-b` | `<number>` | The batch size to use for training. | `144` |
 
-## Citation
-Please consider citing our work if you find that it is useful.
-```
-@inproceedings{
-  author       = {Ho Man Kwan and Ge Gao and Fan Zhang and Andrew Gower and David Bull},
-  title        = {HiNeRV: Video Compression with Hierarchical Encoding-based Neural Representation},
-  booktitle    = {NeurIPS},
-  year         = {2023}
-}
-```
+**Example with options:**
+
+\# Use the large model and save results in a custom directory  
+./run\_hinerv.sh \-i /path/to/my\_video.mp4 \-m L \-o /data/hinerv\_runs
+
+### **Important: Resolution Configuration**
+
+HiNeRV requires specific configuration files for each video resolution. This repository includes the default configs provided by the authors (e.g., for 1920x1080).
+
+If you use a video with a resolution for which no config exists (e.g., 1280x720), the `run_hinerv.sh` script will stop and print an error message telling you which files you need to create.
+
+To do this, navigate to the `cfgs/` directory, copy the files for the closest existing resolution, rename them to match your video's resolution, and adjust the parameters inside if necessary.
+
+### **Evaluation (Decoding)**
+
+To decode your video (i.e., reconstruct the frames from the trained model), please follow the instructions in the original [HiNeRV README](https://www.google.com/search?q=https://github.com/hmkx/HiNeRV/blob/main/README.md%23evaluation), using the model path generated by the `run_hinerv.sh` script.
+

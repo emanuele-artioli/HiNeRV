@@ -15,33 +15,35 @@ The entire environment setup is handled by a single script.
 **Prerequisites:** You must have `conda` installed on your system.
 
 First, clone this repository:
-
-git clone \<URL\_of\_your\_fork\>  
-cd \<repository\_name\>
-
+```
+git clone https://github.com/emanuele-artioli/HiNeRV.git
+cd HiNeRV
+```
 Then, run the installation script. This will create a new Conda environment named `hinerv` and install all necessary dependencies correctly.
-
+```
 chmod \+x install.sh  
 ./install.sh
-
+```
 The installation is now complete.
 
 ## **2\. Usage**
 
 To use the encoder, you first need to activate the Conda environment in your terminal.
-
+```
 conda activate hinerv
-
+```
 ### **Basic Encoding**
 
 The primary way to use this repository is through the `run_hinerv.sh` script. At its simplest, you just need to provide a path to your video file.
 
-\# Make the script executable (only need to do this once)  
+\# Make the script executable (only need to do this once) 
+``` 
 chmod \+x run\_hinerv.sh
-
-\# Run the encoding process on your video  
+```
+\# Run the encoding process on your video
+```  
 ./run\_hinerv.sh \-i /path/to/my\_video.mp4
-
+```
 The script will automatically:
 
 1. Create an output directory named `hinerv_output/my_video`.  
@@ -64,9 +66,10 @@ The `run_hinerv.sh` script has several options to customize its behavior:
 
 **Example with options:**
 
-\# Use the large model and save results in a custom directory  
+\# Use the large model and save results in a custom directory
+```  
 ./run\_hinerv.sh \-i /path/to/my\_video.mp4 \-m L \-o /data/hinerv\_runs
-
+```
 ### **Important: Resolution Configuration**
 
 HiNeRV requires specific configuration files for each video resolution. This repository includes the default configs provided by the authors (e.g., for 1920x1080).

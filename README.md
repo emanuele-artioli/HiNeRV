@@ -21,7 +21,7 @@ cd HiNeRV
 ```
 Then, run the installation script. This will create a new Conda environment named `hinerv` and install all necessary dependencies correctly.
 ```
-chmod \+x install.sh  
+chmod +x install.sh  
 ./install.sh
 ```
 The installation is now complete.
@@ -36,13 +36,13 @@ conda activate hinerv
 
 The primary way to use this repository is through the `run_hinerv.sh` script. At its simplest, you just need to provide a path to your video file.
 
-\# Make the script executable (only need to do this once) 
+# Make the script executable (only need to do this once) 
 ``` 
-chmod \+x run\_hinerv.sh
+chmod +x run_hinerv.sh
 ```
-\# Run the encoding process on your video
+# Run the encoding process on your video
 ```  
-./run\_hinerv.sh \-i /path/to/my\_video.mp4
+./run_hinerv.sh -i /path/to/my_video.mp4
 ```
 The script will automatically:
 
@@ -66,9 +66,9 @@ The `run_hinerv.sh` script has several options to customize its behavior:
 
 **Example with options:**
 
-\# Use the large model and save results in a custom directory
+# Use the large model and save results in a custom directory
 ```  
-./run\_hinerv.sh \-i /path/to/my\_video.mp4 \-m L \-o /data/hinerv\_runs
+./run_hinerv.sh -i /path/to/my_video.mp4 -m L -o /data/hinerv_runs
 ```
 ### **Important: Resolution Configuration**
 

@@ -2,6 +2,15 @@
 HiNeRV Training Script
 """
 
+import copy
+import time
+import datetime
+import argparse
+import accelerate
+import torch
+import numpy as np
+import os
+
 from utils import *
 from datasets import create_dataset, create_loader, set_dataset_args
 from hinerv_tasks import VideoRegressionTask, set_task_args
@@ -187,7 +196,7 @@ def eval_step(args, logger, suffix, epoch, model, loader, task, accelerator, log
     return reduced_loss.item() / counts, {k: v.item() / counts for k, v in reduced_metrics.items()}
 
 
-def do_eval(args, epoch, num_epochs): 
+def do_eval(args, epoch, num_epochs):
     return (epoch + 1) % args.eval_epochs == 0 or (epoch + 1) == num_epochs
 
 
@@ -197,6 +206,16 @@ def do_log(args, epoch, num_epochs):
 
 
 def main():
+    # ------------------------------------------------------------------------------------
+    # MODIFICATION START: Fix for cuDNN internal errors
+    # ------------------------------------------------------------------------------------
+    # These settings make cuDNN's behavior deterministic and less prone to internal
+    # errors, which can occur with fp16 and certain hardware/driver combinations.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    # ------------------------------------------------------------------------------------
+    # MODIFICATION END
+
     start_time = datetime.datetime.now()
 
     # Set & store args
@@ -211,7 +230,7 @@ def main():
     accelerate.utils.set_seed(args.seed, device_specific=True)
 
     # Task setting
-    train_task = VideoRegressionTask(args, logger, accelerator, root=os.path.join(output_dir, 'train_output'), 
+    train_task = VideoRegressionTask(args, logger, accelerator, root=os.path.join(output_dir, 'train_output'),
                                      training=True, enable_log_eval=False)
     eval_task = VideoRegressionTask(args, logger, accelerator, root=os.path.join(output_dir, 'eval_output'),
                                     training=False, enable_log_eval=args.log_eval)
@@ -246,7 +265,7 @@ def main():
     # Compute MACs
     with torch.no_grad():
         model.eval()
-        _, macs, _ = get_model_profile(model=model, 
+        _, macs, _ = get_model_profile(model=model,
                                        args=[eval_task.parse_input(eval_loader, next(iter(eval_loader)))[0]],
                                        print_profile=False, detailed=False, warm_up=1, as_string=False)
         macs /= args.eval_batch_size
@@ -255,15 +274,23 @@ def main():
     # Pruning & quanization
     initial_parametrizations(args, logger, model)
 
-    # Place model & loaders
-    model, train_loader, eval_loader = accelerator.prepare(model, train_loader, eval_loader)
-
     # Optimizer & scheduler
-    logger.info(f'Create scheduler: {args.sched}')
-    opt_sch, prune_opt_sch, quant_opt_sch = [get_stage_optimizer_scheduler(args, logger, accelerator, model, train_loader, stage) for stage in ['main', 'prune', 'quant']]
+    logger.info(f'Create optimizers and schedulers for all stages...')
+    main_optimizer, main_scheduler = get_stage_optimizer_scheduler(args, logger, accelerator, model, train_loader, 'main')
+    prune_optimizer, prune_scheduler = get_stage_optimizer_scheduler(args, logger, accelerator, model, train_loader, 'prune')
+    quant_optimizer, quant_scheduler = get_stage_optimizer_scheduler(args, logger, accelerator, model, train_loader, 'quant')
 
-    # Place optimizer & scheduler
-    opt_sch, prune_opt_sch, quant_opt_sch = accelerator.prepare(*opt_sch), accelerator.prepare(*prune_opt_sch), accelerator.prepare(*quant_opt_sch)
+    # Prepare all components with Accelerate
+    logger.info(f'Preparing all components with Accelerate...')
+    model, train_loader, eval_loader, main_optimizer, main_scheduler, prune_optimizer, prune_scheduler, quant_optimizer, quant_scheduler = accelerator.prepare(
+        model, train_loader, eval_loader, main_optimizer, main_scheduler, prune_optimizer, prune_scheduler, quant_optimizer, quant_scheduler
+    )
+
+    # Re-package the prepared objects back into tuples for the rest of the script.
+    opt_sch = (main_optimizer, main_scheduler)
+    prune_opt_sch = (prune_optimizer, prune_scheduler)
+    quant_opt_sch = (quant_optimizer, quant_scheduler)
+
 
     # Restoring training state
     checkpoint_manager = CheckpointManager(logger, accelerator, os.path.join(output_dir, 'checkpoints'), args.eval_metric[0])
@@ -290,7 +317,7 @@ def main():
         logger.info(f'    Number of pruning fine-tuning epochs: {args.prune_epochs}')
         logger.info(f'    Number of quant fine-tuning epochs: {args.quant_epochs}')
 
-        best_metrics = BestMetricTracker(logger, accelerator, os.path.join(output_dir, 'results'), 
+        best_metrics = BestMetricTracker(logger, accelerator, os.path.join(output_dir, 'results'),
                                         {**{k: ['size', args.eval_metric[0]] for k in ['full', 'pruned', 'qat']},
                                          **{f'Q{quant_level}': ['bpp', args.eval_metric[0]] for quant_level in sorted(args.quant_level, reverse=True)}})
         zeros, total = get_sparsity(model)
@@ -317,12 +344,21 @@ def main():
             logger.info(f'Start pruning fine-tuning for {args.prune_epochs} epochs.')
             zeros, total = set_pruning(args, logger, model, args.prune_ratio, args.prune_weight)
             logger.info(f'Number of pruned parameters: {zeros}    total: {total}')
-            logger.info(f'Sparsity: {zeros / total:.4f}')
+            # ------------------------------------------------------------------------------------
+            # MODIFICATION START: Fix for ZeroDivisionError
+            # ------------------------------------------------------------------------------------
+            # Only calculate and log sparsity if there are prunable parameters.
+            if total > 0:
+                logger.info(f'Sparsity: {zeros / total:.4f}')
+            # ------------------------------------------------------------------------------------
+            # MODIFICATION END
+            # ------------------------------------------------------------------------------------
+
 
         while epoch < args.epochs + args.prune_epochs:
             prune_epoch = epoch - args.epochs
             train_step(args, logger, 'Pruning', prune_epoch, model, train_loader, prune_opt_sch[0], prune_opt_sch[1], train_task, accelerator, False)
-            
+
             # Evaluation
             if (prune_epoch + 1) % args.eval_epochs == 0 or (prune_epoch + 1) == args.prune_epochs:
                 _, metrics = eval_step(args, logger, 'Pruning', epoch, model, eval_loader, eval_task, accelerator,
@@ -352,8 +388,15 @@ def main():
                 for quant_level in sorted(args.quant_level, reverse=True):
                     # Compress bitstream
                     logger.info(f'Compress model weights into bitstream')
-                    logger.info(f'***  Quant level: {quant_level}bits')
-                    logger.info(f'***  Sparsity: {zeros / total:.4f}')
+                    logger.info(f'*** Quant level: {quant_level}bits')
+                    # ------------------------------------------------------------------------------------
+                    # MODIFICATION START: Fix for ZeroDivisionError
+                    # ------------------------------------------------------------------------------------
+                    # Only calculate and log sparsity if there are prunable parameters.
+                    if total > 0:
+                        logger.info(f'*** Sparsity: {zeros / total:.4f}')
+                    # ------------------------------------------------------------------------------------
+                    # MODIFICATION END
 
                     num_bytes = compress_bitstream(args, logger, accelerator, model, os.path.join(output_dir, 'bitstreams'), quant_level)
                     bits_per_pixel = num_bytes * 8 / np.prod(eval_dataset.video_size)

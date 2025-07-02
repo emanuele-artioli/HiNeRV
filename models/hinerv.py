@@ -1,6 +1,12 @@
 """
 HiNeRV
 """
+import torch
+import torch.nn as nn
+import numpy as np
+import math
+from typing import Optional
+
 from .utils import *
 from .layers import *
 from .encoding import PositionalEncoder
@@ -125,7 +131,7 @@ class HiNeRVEncoding(nn.Module):
                        + px_idx[1][:, None, :, None] * self.size[2]
                        + px_idx[2][:, None, None, :]).view(-1)
         px_mask_flat = (px_mask[0][:, :, None, None, None]
-                        * px_mask[1][:, None, :, None, None] 
+                        * px_mask[1][:, None, :, None, None]
                         * px_mask[2][:, None, None, :, None]).view(-1, 1)
 
         # Encode
@@ -249,7 +255,7 @@ class HiNeRVDecoder(nn.Module):
     """
     HiNeVR Decoder, i.e., the main model layers.
     """
-    def __init__(self, logger, input_size: tuple[int, int, int]=(600, 9, 16), input_channels: int=128, 
+    def __init__(self, logger, input_size: tuple[int, int, int]=(600, 9, 16), input_channels: int=128,
                  output_size: tuple[int, int, int]=(600, 1080, 1920), output_channels: int=3,
                  channels: int=256, channels_reduce: float=2.0, channels_reduce_base: int=1, channels_min: int=1,
                  depths: list=[3, 3, 3, 3], exps: list=[4, 4, 4, 4], kernels: list=[1, 1, 1, 1],
@@ -295,7 +301,7 @@ class HiNeRVDecoder(nn.Module):
 
         # Stem
         _stem_cfg = cfg_override(stem_cfg, C1=self.input_channels, C2=self.channels,
-                                 Ch=max(self.input_channels, self.channels), 
+                                 Ch=max(self.input_channels, self.channels),
                                  kernel_size=self.stem_kernels)
         self.stem = get_block(**_stem_cfg)
 
@@ -368,7 +374,7 @@ class HiNeRVDecoder(nn.Module):
         return self.stem_paddings if patch_mode else (self.stem_paddings[0], 0, 0)
 
     def forward(self, x: torch.Tensor, idx: torch.IntTensor, idx_max: tuple[int, int, int], patch_mode: bool=True):
-        """ 
+        """
         Inputs:
             x: input tensor with shape [N, T1, H1, W1, C]
             idx: patch index tensor with shape [N, 3]
@@ -436,7 +442,7 @@ class HiNeRVDecoder(nn.Module):
                               mask=px_mask_3d)
                 elif isinstance(layer, PositionalEncoder):
                     x = layer(x, idx=idx, idx_max=idx_max,
-                              size=v_size_out, 
+                              size=v_size_out,
                               scale=scale,
                               padding=padding)
                 else:
@@ -548,7 +554,7 @@ def build_encoding(args, logger, size, channels):
 
 def build_decoder(args, logger, input_size, input_channels, output_size, output_channels):
     # Network config
-    assert len(args.depths) == len(args.exps) == len(args.kernels) == len(args.scales_t) == len(args.scales_hw) 
+    assert len(args.depths) == len(args.exps) == len(args.kernels) == len(args.scales_t) == len(args.scales_hw)
     cfg = {}
     cfg['input_size'] = input_size
     cfg['input_channels'] = input_channels
@@ -561,7 +567,7 @@ def build_decoder(args, logger, input_size, input_channels, output_size, output_
     cfg['channels_min'] = args.channels_min
 
     cfg['depths'] = args.depths
-    cfg['exps'] = args.exps    
+    cfg['exps'] = args.exps
     cfg['scales'] = [[scale_t, scale_hw, scale_hw] for scale_t, scale_hw in zip(args.scales_t, args.scales_hw)]
     cfg['stem_kernels'] = args.stem_kernels
     cfg['kernels'] = args.kernels
@@ -610,7 +616,7 @@ def build_model(args, logger, input):
     assert args.base_size[0] == input['video_size'][0] // int(math.prod(args.scales_t))
     assert args.base_size[1] == input['video_size'][1] // int(math.prod(args.scales_hw))
     assert args.base_size[2] == input['video_size'][2] // int(math.prod(args.scales_hw))
-    
+
     # Building encoding and decoder
     encoding = build_encoding(args, logger, args.base_size, args.base_channels)
     decoder = build_decoder(args, logger, args.base_size, args.base_channels, input['video_size'], 3)

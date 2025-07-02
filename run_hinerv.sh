@@ -106,7 +106,10 @@ DATASET_NAME=$(basename "${FRAMES_DIR}")
 HINERV_OUTPUT_DIR="${PROJECT_DIR}/model_output"
 
 echo "Starting HiNeRV training... this may take a while."
-accelerate launch --mixed_precision=fp16 --dynamo_backend=inductor hinerv_main.py \
+
+# MODIFICATION: Removed '--dynamo_backend=inductor' to prevent the cuDNN error.
+# This uses the standard, more stable PyTorch execution engine.
+accelerate launch --mixed_precision="no" hinerv_main.py \
   --dataset "${DATASET_DIR}" \
   --dataset-name "${DATASET_NAME}" \
   --output "${HINERV_OUTPUT_DIR}" \

@@ -71,23 +71,29 @@ else
     echo "Frames extracted to: ${FRAMES_DIR}"
 fi
 
-# --- Step 2: Detect Resolution ---
-FIRST_FRAME=$(find "${FRAMES_DIR}" -type f | head -n 1)
+# --- Step 2: Detect Resolution and Frame Count ---
+FIRST_FRAME=$(find "${FRAMES_DIR}" -type f -name "*.png" | head -n 1)
 if [ -z "${FIRST_FRAME}" ]; then
     echo "Error: Could not find any frames in ${FRAMES_DIR}."
     exit 1
 fi
 RESOLUTION=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${FIRST_FRAME}")
-echo "Detected video resolution: ${RESOLUTION}"
+WIDTH=$(echo $RESOLUTION | cut -d'x' -f1)
+HEIGHT=$(echo $RESOLUTION | cut -d'x' -f2)
+NUM_FRAMES=$(find "${FRAMES_DIR}" -type f -name "*.png" | wc -l)
+
+echo "Detected video metadata:"
+echo "  - Frame Count: ${NUM_FRAMES}"
+echo "  - Resolution:  ${WIDTH}x${HEIGHT}"
 
 # --- Step 3: Find Configuration Files ---
 LOWER_MODEL_SIZE=$(echo "$MODEL_SIZE" | tr '[:upper:]' '[:lower:]')
-TRAIN_CFG_FILE="cfgs/train/hinerv_${RESOLUTION}.txt"
-MODEL_CFG_FILE="cfgs/models/uvg-hinerv-${LOWER_MODEL_SIZE}_${RESOLUTION}.txt"
+TRAIN_CFG_FILE="cfgs/train/hinerv_${WIDTH}x${HEIGHT}.txt"
+MODEL_CFG_FILE="cfgs/models/uvg-hinerv-${LOWER_MODEL_SIZE}_${WIDTH}x${HEIGHT}.txt"
 
 if [ ! -f "$TRAIN_CFG_FILE" ] || [ ! -f "$MODEL_CFG_FILE" ]; then
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ERROR !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    echo "Could not find matching config files for resolution ${RESOLUTION} and model size ${MODEL_SIZE}."
+    echo "Could not find matching config files for resolution ${WIDTH}x${HEIGHT} and model size ${MODEL_SIZE}."
     echo "Looked for:"
     echo "  - ${TRAIN_CFG_FILE}"
     echo "  - ${MODEL_CFG_FILE}"
@@ -108,7 +114,7 @@ HINERV_OUTPUT_DIR="${PROJECT_DIR}/model_output"
 echo "Starting HiNeRV training... this may take a while."
 
 # MODIFICATION: Removed '--dynamo_backend=inductor' to prevent the cuDNN error.
-# This uses the standard, more stable PyTorch execution engine.
+# MODIFICATION: Added video metadata arguments to be saved in args.yaml.
 accelerate launch --mixed_precision="no" hinerv_main.py \
   --dataset "${DATASET_DIR}" \
   --dataset-name "${DATASET_NAME}" \
@@ -119,7 +125,10 @@ accelerate launch --mixed_precision="no" hinerv_main.py \
   --eval-batch-size 1 \
   --grad-accum 1 \
   --log-eval false \
-  --seed 0
+  --seed 0 \
+  --video-num-frames ${NUM_FRAMES} \
+  --video-height ${HEIGHT} \
+  --video-width ${WIDTH}
 
 echo "--- Encoding Complete! ---"
 echo "The trained model and logs are saved in: ${HINERV_OUTPUT_DIR}"

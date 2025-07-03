@@ -51,6 +51,11 @@ group.add_argument('--grad-accum', type=int, default=1, help='Number of gradient
 group.add_argument('--profile', action='store_true', default=False, help='Run profiler.')
 group.add_argument('--seed', type=int, default=0, help='Random seed.')
 
+# MODIFICATION: Add video metadata arguments so they get saved in args.yaml
+group.add_argument('--video-num-frames', type=int, default=0, help='(For storage) Number of frames in the video.')
+group.add_argument('--video-height', type=int, default=0, help='(For storage) Height of the video.')
+group.add_argument('--video-width', type=int, default=0, help='(For storage) Width of the video.')
+
 
 # Dataset
 set_dataset_args(parser)
@@ -318,8 +323,8 @@ def main():
         logger.info(f'    Number of quant fine-tuning epochs: {args.quant_epochs}')
 
         best_metrics = BestMetricTracker(logger, accelerator, os.path.join(output_dir, 'results'),
-                                        {**{k: ['size', args.eval_metric[0]] for k in ['full', 'pruned', 'qat']},
-                                         **{f'Q{quant_level}': ['bpp', args.eval_metric[0]] for quant_level in sorted(args.quant_level, reverse=True)}})
+                                         {**{k: ['size', args.eval_metric[0]] for k in ['full', 'pruned', 'qat']},
+                                          **{f'Q{quant_level}': ['bpp', args.eval_metric[0]] for quant_level in sorted(args.quant_level, reverse=True)}})
         zeros, total = get_sparsity(model)
 
         # Main Training loop
